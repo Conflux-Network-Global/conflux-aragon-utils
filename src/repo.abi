@@ -1,0 +1,43 @@
+[{
+    "constant": false,
+    "inputs": [{
+            "name": "_newSemanticVersion",
+            "type": "uint16[3]"
+        },
+        {
+            "name": "_contractAddress",
+            "type": "address"
+        },
+        {
+            "name": "_contentURI",
+            "type": "bytes"
+        }
+    ],
+    "name": "newVersion",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+},
+{
+    "constant": true,
+    "inputs": [],
+    "name": "getLatest",
+    "outputs": [{
+            "name": "semanticVersion",
+            "type": "uint16[3]"
+        },
+        {
+            "name": "contractAddress",
+            "type": "address"
+        },
+        {
+            "name": "contentURI",
+            "type": "bytes"
+        }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+}
+]

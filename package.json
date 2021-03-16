@@ -1,0 +1,26 @@
+{
+  "name": "conflux-aragon-utils",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "commander": "^7.1.0",
+    "dotenv": "^8.2.0",
+    "js-conflux-sdk": "^1.1.6",
+    "web3-eth-abi": "^1.3.4"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Conflux-Network-Global/conflux-aragon-utils.git"
+  },
+  "author": "Péter Garamvölgyi <peter@conflux-chain.org>",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/Conflux-Network-Global/conflux-aragon-utils/issues"
+  },
+  "homepage": "https://github.com/Conflux-Network-Global/conflux-aragon-utils#readme"
+}
