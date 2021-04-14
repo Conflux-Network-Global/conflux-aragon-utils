@@ -8,8 +8,10 @@ const Web3EthAbi = require('web3-eth-abi');
 const Events = require('./events');
 const Database = require('./database');
 
-const ENS_ADDRESS = '0x884cd1b7907d9f46e890feebba926cb071f03c2c';
-const START_EPOCH = 17929248;
+const ENS_ADDRESS = '0x87E87fA4b4402DfD641fd67dF7248C673Db31db1';
+const DAO_FACTORY_ADDRESS = '0x855d897dad267A8646e4c92bB3D75FdCc40F314F';
+const MINIME_TOKEN_FACTORY_ADDRESS = '0x8f01aae79efefF547bdBCF9A5d344c6c2F21aaF4';
+const START_EPOCH = 20000000;
 
 const NODE_URL = 'ws://test.confluxrpc.org/ws/v2';
 const conflux = new Conflux({ url: NODE_URL, networkId: 1 });
@@ -34,7 +36,7 @@ const KNOWN_APP_IDS = {
 
 const TO_WATCH = [
     'apm-registry@repo',
-    'apm-registry@1.0.1',
+    'apm-registry@1.0.0',
     'apm-enssub@repo',
     'apm-enssub@1.0.0',
     'apm-repo@repo',
@@ -53,8 +55,8 @@ const TO_WATCH = [
     'finance@1.0.1',
     'token-manager@repo',
     'token-manager@1.0.1',
-    'bare-template@repo',
-    'bare-template@1.0.1',
+    // 'bare-template@repo',
+    // 'bare-template@1.0.1',
     'company-template@repo',
     'company-template@1.0.1',
     'membership-template@repo',
@@ -73,14 +75,16 @@ function prepareEvent(event) {
 }
 
 const EVENTS = {
-    NEW_REPO: prepareEvent('NewRepo(bytes32,string,address)'),
-    DEPLOY_DAO: prepareEvent('DeployDao(address)'),
-    DEPLOY_TOKEN: prepareEvent('DeployToken(address)'),
-    NEW_APP_PROXY: prepareEvent('NewAppProxy(address,bool,bytes32)'),
-    NEW_VERSION: prepareEvent('NewVersion(uint256,uint16[3])'),
-    SET_PERMISSION: prepareEvent('SetPermission(address,address,bytes32,bool)'),
-    SET_PERMISSION_PARAMS: prepareEvent('SetPermissionParams(address,address,bytes32,bytes32)'),
-    CHANGE_PERMISSION_MANAGER: prepareEvent('ChangePermissionManager(address,bytes32,address)'),
+    NewRepo: prepareEvent('NewRepo(bytes32,string,address)'),
+    DeployDao: prepareEvent('DeployDao(address)'),
+    NewFactoryCloneToken: prepareEvent('NewFactoryCloneToken(address,address,uint)'),
+    DeployDAO: prepareEvent('DeployDAO(address)'),
+    DeployToken: prepareEvent('DeployToken(address)'),
+    NewAppProxy: prepareEvent('NewAppProxy(address,bool,bytes32)'),
+    NewVersion: prepareEvent('NewVersion(uint256,uint16[3])'),
+    SetPermission: prepareEvent('SetPermission(address,address,bytes32,bool)'),
+    SetPermissionParams: prepareEvent('SetPermissionParams(address,address,bytes32,bytes32)'),
+    ChangePermissionManager: prepareEvent('ChangePermissionManager(address,bytes32,address)'),
 }
 
 // lookup address of AragonPM under 'aragonpm.eth'
@@ -95,12 +99,12 @@ async function lookupAragonPM(ens) {
 
 // find repo `name` in `apm` starting from epoch `from`
 async function findRepo(apm, name, from) {
-    const events = new Events(conflux, 'main', apm, [EVENTS.NEW_REPO.sig], from);
+    const events = new Events(conflux, 'main', apm, [EVENTS.NewRepo.sig], from);
 
     try {
         for await (const [_, logs] of events.get()) {
             for (const log of logs) {
-                const { '1': repoName, '2': address } = EVENTS.NEW_REPO.decode(log.data);
+                const { '1': repoName, '2': address } = EVENTS.NewRepo.decode(log.data);
 
                 if (repoName === name) {
                     return address;
@@ -135,22 +139,22 @@ async function findContract(name, apm, from) {
 async function handleLog(db, context, log) {
     // deploy new DAO
     // TODO: try tracking through DAOFactory directly
-    if (log.topics[0] === EVENTS.DEPLOY_DAO.sig) {
-        const { '0': address } = EVENTS.DEPLOY_DAO.decode(log.data);
+    if (log.topics[0] === EVENTS.DeployDao.sig) {
+        const { '0': address } = EVENTS.DeployDao.decode(log.data);
         console.log(`[${context}] new DAO at epoch ${log.epochNumber} (kernel: ${address})`.bold.yellow);
         track(db, `DAO@${address.substring(0, 10)} (Kernel)`, address, log.epochNumber);
     }
 
     // deploy new token
-    if (log.topics[0] === EVENTS.DEPLOY_TOKEN.sig) {
-        const { '0': address } = EVENTS.DEPLOY_TOKEN.decode(log.data);
+    if (log.topics[0] === EVENTS.DeployToken.sig) {
+        const { '0': address } = EVENTS.DeployToken.decode(log.data);
         console.log(`[${context}] new token at epoch ${log.epochNumber} (address: ${address})`.bold.yellow);
         track(db, `DAO@${address.substring(0, 10)} (Token)`, address, log.epochNumber);
     }
 
     // install new app
-    else if (log.topics[0] === EVENTS.NEW_APP_PROXY.sig) {
-        let { '0': address, '1': _isUpgradable, '2': appId } = EVENTS.NEW_APP_PROXY.decode(log.data);
+    else if (log.topics[0] === EVENTS.NewAppProxy.sig) {
+        let { '0': address, '1': _isUpgradable, '2': appId } = EVENTS.NewAppProxy.decode(log.data);
         if (KNOWN_APP_IDS[appId] !== undefined) { appId = KNOWN_APP_IDS[appId]; }
         console.log(`[${context}] NewAppProxy(${address}, ${appId})`.bold.yellow);
 
@@ -158,20 +162,20 @@ async function handleLog(db, context, log) {
         track(db, `DAO@${dao.substring(0, 10)} (${appId})`, address, log.epochNumber);
     }
 
-    else if (log.topics[0] === EVENTS.NEW_VERSION.sig) {
-        let { '0': versionId, '1': semanticVersion } = EVENTS.NEW_VERSION.decode(log.data);
+    else if (log.topics[0] === EVENTS.NewVersion.sig) {
+        let { '0': versionId, '1': semanticVersion } = EVENTS.NewVersion.decode(log.data);
         console.log(`[${context}] NewVersion(${versionId}, ${semanticVersion.join('.')})`.bold.yellow);
     }
 
-    else if (log.topics[0] === EVENTS.SET_PERMISSION.sig) {
+    else if (log.topics[0] === EVENTS.SetPermission.sig) {
         console.log(`[${context}] SetPermission`.bold.yellow);
     }
 
-    else if (log.topics[0] === EVENTS.SET_PERMISSION_PARAMS.sig) {
+    else if (log.topics[0] === EVENTS.SetPermissionParams.sig) {
         console.log(`[${context}] SetPermissionParams`.bold.yellow);
     }
 
-    else if (log.topics[0] === EVENTS.CHANGE_PERMISSION_MANAGER.sig) {
+    else if (log.topics[0] === EVENTS.ChangePermissionManager.sig) {
         console.log(`[${context}] ChangePermissionManager`.bold.yellow);
     }
 }
@@ -230,7 +234,7 @@ async function main() {
 
     await db.init({
         'host': '127.0.0.1',
-        'port': 3307,
+        'port': 3306,
         'user': 'user',
         'password': 'password',
         'database': 'db',
