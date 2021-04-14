@@ -15,7 +15,7 @@ mysql> grant all privileges on *.* to 'user'@'%';
 
 mysql> create database db;
 mysql> use db;
-mysql> create table latest ( name varchar(50), address varchar(50), earliest int, latest int );
+mysql> create table latest ( name varchar(200), address varchar(50), earliest int, latest int );
 mysql> create table events ( epoch int, block_hash char(66), address varchar(100), topic0 char(66), topic1 char(66), topic2 char(66), topic3 char(66), raw varchar(10000) );
 ```
 
