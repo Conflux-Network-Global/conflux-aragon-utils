@@ -1,34 +1,46 @@
 const { Command } = require('commander');
 const fs = require('fs');
-const { Conflux } = require('js-conflux-sdk');
+const { Conflux, format } = require('js-conflux-sdk');
 const Web3EthAbi = require('web3-eth-abi');
 
 require('dotenv').config()
 
 const NEW_REPO = Web3EthAbi.encodeEventSignature('NewRepo(bytes32,string,address)');
-const NODE_URL = 'http://test.confluxrpc.org';
+const NODE_URL = 'http://test.confluxrpc.com';
+const NETWORK_ID = 1;
+
+const MAX_GAP = 1000;
+const EPOCH_RANGE = 20000;
 
 const Repo = JSON.parse(fs.readFileSync('Repo.abi'));
 const APMRegistry = JSON.parse(fs.readFileSync('APMRegistry.abi'));
 
-const conflux = new Conflux({ url: NODE_URL });
+const conflux = new Conflux({ url: NODE_URL, networkId: NETWORK_ID });
 
 async function list(apm) {
-    const fromEpoch = Number(await conflux.Contract({ abi: APMRegistry, address: apm }).getInitializationEpoch());
-    const toEpoch = Math.min(fromEpoch + 9999, await conflux.getEpochNumber('latest_state'))
-    console.log(`querying NewRepo logs between ${fromEpoch}..${toEpoch}...`);
+    let fromEpoch = Number(await conflux.Contract({ abi: APMRegistry, address: apm }).getInitializationEpoch());
+    const lastToCheck = Math.min(fromEpoch + EPOCH_RANGE, await conflux.getEpochNumber('latest_state'));
 
-    const repos = await conflux.getLogs({
-        address: apm,
-        fromEpoch,
-        toEpoch,
-        topics: [[NEW_REPO]],
-    });
+    while (fromEpoch < lastToCheck) {
+        const toEpoch = Math.min(fromEpoch + MAX_GAP - 1, await conflux.getEpochNumber('latest_state'));
+        console.log(`querying NewRepo logs between ${fromEpoch}..${toEpoch}...`);
 
-    for (const raw of repos) {
-        const { '1': repoName, '2': address } = Web3EthAbi.decodeParameters(['bytes32', 'string', 'address'], raw.data);
-        const latest = await conflux.Contract({ abi: Repo, address }).getLatest();
-        console.log(`${repoName.padStart(20)} is at ${address} (latest version: ${latest.semanticVersion.join('.')} at ${latest.contractAddress}, contentURI: ${latest.contentURI.toString('utf8')})`);
+        const repos = await conflux.getLogs({
+            address: apm,
+            fromEpoch,
+            toEpoch,
+            topics: [[NEW_REPO]],
+        });
+
+        for (const raw of repos) {
+            const { '1': repoName, '2': addressHex } = Web3EthAbi.decodeParameters(['bytes32', 'string', 'address'], raw.data);
+            const address = format.address(addressHex, NETWORK_ID);
+
+            const latest = await conflux.Contract({ abi: Repo, address }).getLatest();
+            console.log(`${repoName.padStart(20)} is at ${address} (latest version: ${latest.semanticVersion.join('.')} at ${format.address(latest.contractAddress, NETWORK_ID)}, contentURI: ${latest.contentURI.toString('utf8')})`);
+        }
+
+        fromEpoch = toEpoch;
     }
 }
 
