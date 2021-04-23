@@ -1,5 +1,6 @@
 const assert = require('assert');
 const mysql = require('mysql2/promise');
+const { format } = require('js-conflux-sdk');
 
 class Database {
     async init(options) {
@@ -39,6 +40,10 @@ class Database {
             if (Array.isArray(topic)) return `${field} IN ('${topic.join(`', '`)}')`;
             if (typeof topic === 'string') return `${field} = '${topic}'`;
             throw `Unexpected topic: ${topic}`;
+        }
+
+        if (args.address !== 'undefined') {
+            args.address = format.address(format.hexAddress(args.address), 1, true);
         }
 
         const q1 = `(epoch BETWEEN ${Number(args.fromEpoch)} AND ${Number(args.toEpoch)})`;
