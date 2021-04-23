@@ -2,6 +2,9 @@ const _colors = require('colors');
 const { Conflux, format } = require('js-conflux-sdk');
 const fs = require('fs');
 const jayson = require('jayson/promise');
+const cors = require('cors');
+const connect = require('connect');
+const jsonParser = require('body-parser').json;
 const namehash = require('eth-ens-namehash').hash;
 const Web3EthAbi = require('web3-eth-abi');
 
@@ -220,13 +223,19 @@ async function track(db, name, address, from) {
 }
 
 function startServer(db, port) {
+    const app = connect();
+
     const server = jayson.server({
         cfx_getLogs: async function(args) {
             return await db.getLogs(args[0]);
         }
     });
 
-    server.http().listen(port);
+    app.use(cors({methods: ['POST']}));
+    app.use(jsonParser());
+    app.use(server.middleware());
+
+    app.listen(port);
 }
 
 async function main() {
