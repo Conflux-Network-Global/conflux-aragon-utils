@@ -46,7 +46,7 @@ class Database {
             args.address = format.address(format.hexAddress(args.address), 1, true);
         }
 
-        const q1 = `(epoch BETWEEN ${Number(args.fromEpoch)} AND ${Number(args.toEpoch)})`;
+        const q1 = `((${args.fromEpoch ? `epoch >= ${Number(args.fromEpoch)}` : 'true'}) AND (${args.toEpoch ? `epoch <= ${Number(args.toEpoch)}` : 'true'}))`
         const q2 = args.address ? `(address = '${args.address}')` : 'true';
         const q3 = args.topics ? `((${topicToQuery('topic0', args.topics[0])}) AND (${topicToQuery('topic1', args.topics[1])}) AND (${topicToQuery('topic2', args.topics[2])}) AND (${topicToQuery('topic3', args.topics[3])}))` : 'true';
         const q = `SELECT raw from events WHERE ${q1} AND ${q2} AND ${q3}`;
