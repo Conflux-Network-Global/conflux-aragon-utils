@@ -118,7 +118,7 @@ async function findRepo(apm, name, from) {
     }
     catch (err) {
         console.error('[main] unexpected error:'.bold.red, err);
-        throw err;
+        process.exit();
     }
 }
 
@@ -218,6 +218,7 @@ async function track(db, name, address, from) {
         }
         catch (err) {
             console.error(`[${name}] unexpected error:`.bold.red, err);
+            process.exit();
         }
     }
 }
