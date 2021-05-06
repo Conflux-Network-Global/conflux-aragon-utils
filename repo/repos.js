@@ -73,13 +73,13 @@ async function main() {
     const program = new Command();
 
     program
-        .command('list <apm>')
-        .description('clone a repository into a newly created directory')
+        .command('list <apmAddr>')
+        .description('list repositories registered on the given APM instance')
         .action(list);
 
     program
-        .command('register <repo> <newVersion> <newAddress> <newContentURI>')
-        .description('clone a repository into a newly created directory')
+        .command('register <repo> <newVersionSemver> <newImplAddr> <newContentURI>')
+        .description('register a new version (implementation contract and content URI) on the given repository')
         .action(register);
 
     program.parse();
