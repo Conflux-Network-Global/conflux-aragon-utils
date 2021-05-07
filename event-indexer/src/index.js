@@ -4,6 +4,7 @@ const { Conflux, format } = require('js-conflux-sdk');
 const fs = require('fs');
 const jayson = require('jayson/promise');
 const cors = require('cors');
+const morgan = require('morgan');
 const connect = require('connect');
 const jsonParser = require('body-parser').json;
 const namehash = require('eth-ens-namehash').hash;
@@ -258,6 +259,8 @@ function startServer(db, port) {
         }
     });
 
+    morgan.token('body', (req, res) => JSON.stringify(req.body));
+    app.use(morgan(':method :url :status :response-time ms - :res[content-length] :body - :req[content-length]'));
     app.use(cors({methods: ['POST']}));
     app.use(jsonParser());
     app.use(server.middleware());
