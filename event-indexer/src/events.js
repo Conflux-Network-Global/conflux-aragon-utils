@@ -7,7 +7,7 @@ const snooze = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 class Events {
     constructor(conflux, name, address, topics, startEpoch) {
-        this.conflux = conflux,
+        this.conflux = conflux;
         this.name = name;
         this.address = address;
         this.topics = topics;
@@ -48,7 +48,7 @@ class Events {
                 continue;
             }
 
-            console.log(`[${this.name}] filtering ${fromEpoch}..${toEpoch}...`.grey);
+            // console.log(`[${this.name}] filtering ${fromEpoch}..${toEpoch}...`.grey);
 
             const logs = await this.conflux.getLogs({
                 address: this.address,
