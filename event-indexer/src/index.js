@@ -15,8 +15,6 @@ const Database = require('./database');
 const Network = require('./network');
 
 const ENS_ADDRESS = '0x87E87fA4b4402DfD641fd67dF7248C673Db31db1';
-const DAO_FACTORY_ADDRESS = '0x855d897dad267A8646e4c92bB3D75FdCc40F314F';
-const MINIME_TOKEN_FACTORY_ADDRESS = '0x8f01aae79efefF547bdBCF9A5d344c6c2F21aaF4';
 const START_EPOCH = 20000000;
 
 const NODE_URL = 'ws://test.confluxrpc.org/ws/v2';
@@ -58,43 +56,15 @@ const KNOWN_APP_IDS = {
     '0x3b4bf6bf3ad5000ecf0f989d5befde585c6860fea3e574a4fab4c49d1c177d9c': 'KERNEL',
     '0xddbcfd564f642ab5627cf68b9b7d374fb4f8a36e941a75d89c87998cef03bd61': 'EVM_SCRIPT_REGISTRY',
     '0x9ac98dc5f995bf0211ed589ef022719d1487e5cb2bab505676f0d084c07cf89a': 'AGENT',
-};
 
-const TO_WATCH = [
-    'apm-registry@repo',
-    'apm-registry@1.0.0',
-    'apm-enssub@repo',
-    'apm-enssub@1.0.0',
-    'apm-repo@repo',
-    'apm-repo@1.0.0',
-    'agent@repo',
-    'agent@1.0.1',
-    'vault@repo',
-    'vault@1.0.1',
-    'voting@repo',
-    'voting@1.0.1',
-    'survey@repo',
-    'survey@1.0.1',
-    'payroll@repo',
-    'payroll@1.0.0',
-    'finance@repo',
-    'finance@1.0.1',
-    'token-manager@repo',
-    'token-manager@1.0.1',
-    // 'bare-template@repo',
-    // 'bare-template@1.0.1',
-    'company-template@repo',
-    'company-template@1.0.1',
-    'membership-template@repo',
-    'membership-template@1.0.1',
-    'reputation-template@repo',
-    'reputation-template@1.0.1',
-];
+    // TODO: this relies on ENS registrar root node
+    '0x7b4f7602faf178a4a239b8b2ed4155358e256b08ee7c6b6b1b01ebec891ce1f1': 'APM-REPO',
+};
 
 const RUNNING = new Set();
 
 function prepareEvent(event) {
-    const [name, ...params] = event.slice(0, -1).split(/[(,]/);
+    const [_name, ...params] = event.slice(0, -1).split(/[(,]/);
     const sig = Web3EthAbi.encodeEventSignature(event);
     const decode = data => Web3EthAbi.decodeParameters(params, data);
     return { sig, decode };
@@ -123,58 +93,26 @@ async function lookupAragonPM(ens) {
     return format.hexAddress(apm);
 }
 
-// find repo `name` in `apm` starting from epoch `from`
-async function findRepo(apm, name, from) {
-    const events = new Events(network, 'main', apm, [EVENTS.NewRepo.sig], from);
-
-    try {
-        for await (const [_, logs] of events.get()) {
-            for (const log of logs) {
-                const { '1': repoName, '2': address } = EVENTS.NewRepo.decode(log.data);
-
-                if (repoName === name) {
-                    return address;
-                }
-            }
-        }
-    }
-    catch (err) {
-        console.error('[main] unexpected error:'.bold.red, err);
-        process.exit();
-    }
-}
-
-// find contract `name` in `apm` starting from epoch `from`
-async function findContract(name, apm, from) {
-    const [template, version] = name.split('@');
-    const repo = await findRepo(apm, template, from);
-
-    if (version === 'repo') {
-        console.log(`[main] ${template}@${version} is at ${repo}`.bold.green);
-        return repo;
-    }
-
-    const latest = await conflux.Contract({ abi: ABIS.REPO, address: repo }).getBySemanticVersion(version.split('.'));
-    const address = format.hexAddress(latest.contractAddress);
-    console.log(`[main] ${template}@${version} is at ${address}`.bold.green);
-
-    return address;
-}
-
 // implement special handling for some log types
-async function handleLog(db, context, log) {
+async function handleLog(db, ctx, log) {
+    // new Repo
+    if (log.topics[0] === EVENTS.NewRepo.sig) {
+        const { '0': id, '1': name, '2': repo } = EVENTS.NewRepo.decode(log.data);
+        console.log(`[${ctx.name}] new Repo at epoch ${log.epochNumber}: ${id}, ${name}, ${repo}`.bold.yellow);
+        track(db, `${name}@repo`, repo, log.epochNumber);
+    }
+
     // deploy new DAO
-    // TODO: try tracking through DAOFactory directly
     if (log.topics[0] === EVENTS.DeployDao.sig) {
         const { '0': address } = EVENTS.DeployDao.decode(log.data);
-        console.log(`[${context}] new DAO at epoch ${log.epochNumber} (kernel: ${address})`.bold.yellow);
+        console.log(`[${ctx.name}] new DAO at epoch ${log.epochNumber} (kernel: ${address})`.bold.yellow);
         track(db, `DAO@${address.substring(0, 10)} (Kernel)`, address, log.epochNumber);
     }
 
     // deploy new token
     if (log.topics[0] === EVENTS.DeployToken.sig) {
         const { '0': address } = EVENTS.DeployToken.decode(log.data);
-        console.log(`[${context}] new token at epoch ${log.epochNumber} (address: ${address})`.bold.yellow);
+        console.log(`[${ctx.name}] new token at epoch ${log.epochNumber} (address: ${address})`.bold.yellow);
         track(db, `DAO@${address.substring(0, 10)} (Token)`, address, log.epochNumber);
     }
 
@@ -182,7 +120,12 @@ async function handleLog(db, context, log) {
     else if (log.topics[0] === EVENTS.NewAppProxy.sig) {
         let { '0': address, '1': _isUpgradable, '2': appId } = EVENTS.NewAppProxy.decode(log.data);
         if (KNOWN_APP_IDS[appId] !== undefined) { appId = KNOWN_APP_IDS[appId]; }
-        console.log(`[${context}] NewAppProxy(${address}, ${appId})`.bold.yellow);
+        console.log(`[${ctx.name}] NewAppProxy(${address}, ${appId})`.bold.yellow);
+
+        // we have special handling for Repos through the `NewRepo` event
+        if (appId === 'APM-REPO') {
+            return;
+        }
 
         const dao = format.hexAddress(log.address);
         track(db, `DAO@${dao.substring(0, 10)} (${appId})`, address, log.epochNumber);
@@ -190,19 +133,27 @@ async function handleLog(db, context, log) {
 
     else if (log.topics[0] === EVENTS.NewVersion.sig) {
         let { '0': versionId, '1': semanticVersion } = EVENTS.NewVersion.decode(log.data);
-        console.log(`[${context}] NewVersion(${versionId}, ${semanticVersion.join('.')})`.bold.yellow);
+
+        let { contractAddress, contentURI } = await conflux.Contract({ abi: ABIS.REPO, address: ctx.address }).getBySemanticVersion(semanticVersion);
+        contractAddress = format.hexAddress(contractAddress);
+        contentURI = contentURI.toString();
+
+        console.log(`[${ctx.name}] NewVersion(${versionId}, ${semanticVersion.join('.')}): ${contractAddress}, ${contentURI}`.bold.yellow);
+
+        const baseName = ctx.name.replace(/@repo$/, '');
+        track(db, `${baseName}@${semanticVersion.join('.')}`, contractAddress, log.epochNumber);
     }
 
     else if (log.topics[0] === EVENTS.SetPermission.sig) {
-        console.log(`[${context}] SetPermission`.bold.yellow);
+        console.log(`[${ctx.name}] SetPermission`.bold.yellow);
     }
 
     else if (log.topics[0] === EVENTS.SetPermissionParams.sig) {
-        console.log(`[${context}] SetPermissionParams`.bold.yellow);
+        console.log(`[${ctx.name}] SetPermissionParams`.bold.yellow);
     }
 
     else if (log.topics[0] === EVENTS.ChangePermissionManager.sig) {
-        console.log(`[${context}] ChangePermissionManager`.bold.yellow);
+        console.log(`[${ctx.name}] ChangePermissionManager`.bold.yellow);
     }
 }
 
@@ -228,7 +179,7 @@ async function track(db, name, address, from, untilEpoch = Number.MAX_SAFE_INTEG
 
                 // execute special logic for logs
                 for (const log of logs) {
-                    await handleLog(db, name, log);
+                    await handleLog(db, { address, name }, log);
                 }
 
                 // store epoch logs in db
@@ -288,19 +239,13 @@ async function main() {
     process.on('SIGUSR2', async () => { db.close(); process.exit(); });
     process.on('uncaughtException', async (r) => { console.error(r); db.close(); process.exit(); });
 
-    // find AragonPM
-    const apm = await lookupAragonPM(ENS_ADDRESS);
-
     // init contracts in DB
     const [entries] = await db.pool.query('SELECT * from latest');
-    const names = entries.map(_ => _.name);
 
-    for (const name of TO_WATCH) {
-        if (!names.includes(name)) {
-            const address = await findContract(name, apm, START_EPOCH);
-            await db.initContract(name, address, START_EPOCH);
-            entries.unshift({ name, address, latest: START_EPOCH });
-        }
+    // find and track AragonPM if necessary
+    if (!entries.some(_ => _.name === 'apm')) {
+        const apm = await lookupAragonPM(ENS_ADDRESS);
+        track(db, 'apm', apm, START_EPOCH);
     }
 
     // start tracking contracts
