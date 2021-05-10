@@ -1,8 +1,10 @@
+const assert = require('assert');
 const _colors = require('colors');
 const { Conflux, format } = require('js-conflux-sdk');
 const fs = require('fs');
 const jayson = require('jayson/promise');
 const cors = require('cors');
+const morgan = require('morgan');
 const connect = require('connect');
 const jsonParser = require('body-parser').json;
 const namehash = require('eth-ens-namehash').hash;
@@ -10,6 +12,7 @@ const Web3EthAbi = require('web3-eth-abi');
 
 const Events = require('./events');
 const Database = require('./database');
+const Network = require('./network');
 
 const ENS_ADDRESS = '0x87E87fA4b4402DfD641fd67dF7248C673Db31db1';
 const DAO_FACTORY_ADDRESS = '0x855d897dad267A8646e4c92bB3D75FdCc40F314F';
@@ -19,6 +22,25 @@ const START_EPOCH = 20000000;
 const NODE_URL = 'ws://test.confluxrpc.org/ws/v2';
 const conflux = new Conflux({ url: NODE_URL, networkId: 1 });
 conflux.provider.setMaxListeners(0); // suppress warning
+
+const network = new Network(conflux);
+
+function printStats(prev, interval, lastTen) {
+    const current = network.numRequests;
+    const addition = current - prev;
+
+    lastTen.shift();
+    lastTen.push(addition);
+    assert(lastTen.length == 60);
+
+    const sum = lastTen.reduce((a, b) => a + b, 0);
+    const avg = sum / 60;
+
+    console.log(`sent = ${current} (+${addition}), average (/s) = ${avg}`);
+    setTimeout(() => printStats(current, interval, lastTen), interval);
+}
+
+printStats(0, 1000, new Array(60).fill(0));
 
 const ABIS = {
     ENS: JSON.parse(fs.readFileSync('abis/ENS.abi')),
@@ -103,7 +125,7 @@ async function lookupAragonPM(ens) {
 
 // find repo `name` in `apm` starting from epoch `from`
 async function findRepo(apm, name, from) {
-    const events = new Events(conflux, 'main', apm, [EVENTS.NewRepo.sig], from);
+    const events = new Events(network, 'main', apm, [EVENTS.NewRepo.sig], from);
 
     try {
         for await (const [_, logs] of events.get()) {
@@ -186,7 +208,7 @@ async function handleLog(db, context, log) {
 
 // track contract `name` at address `address` from epoch `from`.
 // if the contract is already present in DB, we will continue from the stored epoch.
-async function track(db, name, address, from) {
+async function track(db, name, address, from, untilEpoch = Number.MAX_SAFE_INTEGER) {
     if (RUNNING.has(name)) {
         return;
     }
@@ -195,7 +217,7 @@ async function track(db, name, address, from) {
     console.log(`[${name}] starting from ${from}...`);
     RUNNING.add(name);
 
-    const events = new Events(conflux, name, address, [], from);
+    const events = new Events(network, name, address, [], from);
 
     while (true) {
         try {
@@ -211,8 +233,13 @@ async function track(db, name, address, from) {
 
                 // store epoch logs in db
                 // even with no logs, we periodically commit progress
-                if (logs.length > 0 || epoch % 10000 == 0) {
+                if (logs.length > 0 || epoch % 10000 == 0 || epoch === untilEpoch) {
                     db.storeEpochLogs(epoch, address, logs);
+                }
+
+                if (epoch === untilEpoch) {
+                    console.error(`[${name}] reached epoch ${untilEpoch}, finishing`.bold.white);
+                    return;
                 }
             }
         }
@@ -232,6 +259,8 @@ function startServer(db, port) {
         }
     });
 
+    morgan.token('body', (req, res) => JSON.stringify(req.body));
+    app.use(morgan(':method :url :status :response-time ms - :res[content-length] :body - :req[content-length]'));
     app.use(cors({methods: ['POST']}));
     app.use(jsonParser());
     app.use(server.middleware());
