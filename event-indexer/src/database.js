@@ -9,7 +9,7 @@ class Database {
     }
 
     async initContract(name, address, creationEpoch) {
-        const [rows, _fields] = await this.pool.execute(`SELECT * FROM latest WHERE address='${address}'`);
+        const [rows, _fields] = await this.pool.query(`SELECT * FROM latest WHERE address='${address}'`);
 
         if (rows.length > 0) {
             assert(rows.length == 1);
@@ -18,7 +18,7 @@ class Database {
         }
 
         // insert if not present
-        await this.pool.execute(`INSERT INTO latest VALUES ('${name}', '${address}', ${creationEpoch}, ${creationEpoch - 1})`);
+        await this.pool.query(`INSERT INTO latest VALUES ('${name}', '${address}', ${creationEpoch}, ${creationEpoch - 1})`);
         return creationEpoch - 1;
     }
 
@@ -27,10 +27,10 @@ class Database {
 
         for (const log of logs) {
             assert(log.epochNumber == epoch);
-            await this.pool.execute(`INSERT INTO events VALUES (${epoch}, '${log.blockHash}', '${log.address}', '${log.topics[0]}', '${log.topics[1]}', '${log.topics[2]}', '${log.topics[3]}', '${JSON.stringify(log)}')`);
+            await this.pool.query(`INSERT INTO events VALUES (${epoch}, '${log.blockHash}', '${log.address}', '${log.topics[0]}', '${log.topics[1]}', '${log.topics[2]}', '${log.topics[3]}', '${JSON.stringify(log)}')`);
         }
 
-        await this.pool.execute(`UPDATE latest SET latest = ${epoch} WHERE address = '${address}'`);
+        await this.pool.query(`UPDATE latest SET latest = ${epoch} WHERE address = '${address}'`);
         await this.pool.commit();
     }
 
@@ -42,7 +42,7 @@ class Database {
             throw `Unexpected topic: ${topic}`;
         }
 
-        if (args.address !== 'undefined') {
+        if (typeof args.address !== 'undefined') {
             args.address = format.address(format.hexAddress(args.address), 1, true);
         }
 
@@ -52,7 +52,7 @@ class Database {
         const q = `SELECT raw from events WHERE ${q1} AND ${q2} AND ${q3}`;
         console.log(q);
 
-        const [rows, _fields] = await this.pool.execute(q);
+        const [rows, _fields] = await this.pool.query(q);
         return rows.map(r => JSON.parse(r.raw));
     }
 
