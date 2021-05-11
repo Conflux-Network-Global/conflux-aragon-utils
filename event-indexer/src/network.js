@@ -1,5 +1,6 @@
 const _ = require('underscore');
 const { format } = require('js-conflux-sdk');
+const _colors = require('colors');
 
 class Network {
     constructor(conflux, batchSize = 200, requestPeriodMs = 1000) {
@@ -27,7 +28,11 @@ class Network {
 
         // periodically make epoch requests
         setInterval(async () => {
-            await this.requestEpochs();
+            try {
+                await this.requestEpochs();
+            } catch (err) {
+                console.error(`Error during cfx_getStatus: ${err}`.bold.red);
+            }
         }, this.requestPeriodMs);
     }
 
