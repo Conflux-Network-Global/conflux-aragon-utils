@@ -5,62 +5,89 @@ const _colors = require('colors');
 
 class Database {
     async init(options) {
-        // this.pool = await mysql.createPool(options);
-        this.pool = await mysql.createConnection(options); // TODO
+        this.pool = await mysql.createPool(options);
     }
 
     async initContract(name, address, creationEpoch) {
-        const [rows, _fields] = await this.pool.execute(`SELECT * FROM latest WHERE address='${address}'`);
+        const [rows, _fields] = await this.pool.execute('SELECT * FROM `latest` WHERE `address` = :address',  { address });
 
         if (rows.length > 0) {
             assert(rows.length == 1);
 
             if (rows[0].name !== name) {
                 console.log(`Warning: duplicate address in DB, updating from ${rows[0].name} to ${name}`.bold.red);
-                await this.pool.execute(`UPDATE latest SET name='${name}' WHERE address='${address}'`);
+                await this.pool.execute('UPDATE `latest` SET `name` = :name WHERE `address` = :address', { name, address });
             }
 
             return rows[0].latest;
         }
 
         // insert if not present
-        await this.pool.execute(`INSERT INTO latest VALUES ('${name}', '${address}', ${creationEpoch}, ${creationEpoch - 1})`);
+        await this.pool.execute('INSERT INTO `latest` VALUES (:name, :address, :earliest, :latest)', {
+            name,
+            address,
+            earliest: creationEpoch,
+            latest: creationEpoch - 1,
+        });
+
         return creationEpoch - 1;
     }
 
     async storeEpochLogs(epoch, address, logs) {
-        await this.pool.beginTransaction();
+        const conn = await this.pool.getConnection();
+        await conn.beginTransaction();
 
         for (const log of logs) {
             assert(log.epochNumber == epoch);
-            await this.pool.execute(`INSERT INTO events VALUES (${epoch}, '${log.blockHash}', '${log.address}', '${log.topics[0]}', '${log.topics[1]}', '${log.topics[2]}', '${log.topics[3]}', '${JSON.stringify(log)}')`);
+
+            await conn.execute('INSERT INTO `events` VALUES (:epoch, :blockHash, :address, :topic0, :topic1, :topic2, :topic3, :raw)', {
+                epoch,
+                blockHash: log.blockHash,
+                address: log.address,
+                topic0: log.topics[0],
+                topic1: log.topics[1] || null,
+                topic2: log.topics[2] || null,
+                topic3: log.topics[3] || null,
+                raw: JSON.stringify(log),
+            });
         }
 
-        await this.pool.execute(`UPDATE latest SET latest = ${epoch} WHERE address = '${address}'`);
-        await this.pool.commit();
+        await conn.execute('UPDATE `latest` SET `latest` = :epoch WHERE `address` = :address', { epoch, address });
+        await conn.commit();
+        conn.release();
     }
 
     async getLogs(args) {
-        const topicToQuery = (field, topic) => {
-            if (!topic) return 'true';
-            if (Array.isArray(topic)) return `${field} IN ('${topic.join(`', '`)}')`;
-            if (typeof topic === 'string') return `${field} = '${topic}'`;
-            throw `Unexpected topic: ${topic}`;
-        }
+        const [rows] = await this.pool.query(`
+            SELECT raw FROM events WHERE
 
-        if (args.address !== 'undefined') {
-            args.address = format.address(format.hexAddress(args.address), 1, true);
-        }
+            -- epoch number
+                (:from IS NULL OR epoch >= :from)
+            AND (:to IS NULL OR epoch <= :to)
 
-        // TODO: escape
-        // https://github.com/mysqljs/mysql#escaping-query-values
-        const q1 = `((${args.fromEpoch ? `epoch >= ${Number(args.fromEpoch)}` : 'true'}) AND (${args.toEpoch ? `epoch <= ${Number(args.toEpoch)}` : 'true'}))`
-        const q2 = args.address ? `(address = '${args.address}')` : 'true';
-        const q3 = args.topics ? `((${topicToQuery('topic0', args.topics[0])}) AND (${topicToQuery('topic1', args.topics[1])}) AND (${topicToQuery('topic2', args.topics[2])}) AND (${topicToQuery('topic3', args.topics[3])}))` : 'true';
-        const q = `SELECT raw from events WHERE ${q1} AND ${q2} AND ${q3}`;
-        console.log(q);
+            -- address
+            AND (:address IS NULL OR address = :address)
 
-        const [rows, _fields] = await this.pool.execute(q);
+            -- topics
+            AND (:noTopic0 OR topic0 IN (:topic0))
+            AND (:noTopic1 OR topic1 IN (:topic1))
+            AND (:noTopic2 OR topic2 IN (:topic2))
+            AND (:noTopic3 OR topic3 IN (:topic3))`,
+            {
+                from: args.fromEpoch ? Number(args.fromEpoch) : null,
+                to: args.toEpoch ? Number(args.toEpoch) : null,
+                address: args.address ? format.address(format.hexAddress(args.address), 1, true) : null, // TODO: use network ID
+                noTopic0: !args.topics || !args.topics[0],
+                topic0: args.topics && args.topics[0] || null,
+                noTopic1: !args.topics || !args.topics[1],
+                topic1: args.topics && args.topics[1] || null,
+                noTopic2: !args.topics || !args.topics[2],
+                topic2: args.topics && args.topics[2] || null,
+                noTopic3: !args.topics || !args.topics[3],
+                topic3: args.topics && args.topics[3] || null,
+            }
+        );
+
         return rows.map(r => JSON.parse(r.raw));
     }
 

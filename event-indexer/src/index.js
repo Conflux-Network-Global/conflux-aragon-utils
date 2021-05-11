@@ -224,11 +224,16 @@ async function main() {
     const db = new Database();
 
     await db.init({
-        'host': '127.0.0.1',
-        'port': 3306,
-        'user': 'user',
-        'password': 'password',
-        'database': 'db',
+        host: '127.0.0.1',
+        port: 3306,
+        user: 'user',
+        password: 'password',
+        database: 'db',
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        namedPlaceholders: true,
+        logNamedPlaceholdersConversion: true,
     });
 
     // make sure to close db on exit
