@@ -2,11 +2,6 @@ const assert = require('assert');
 const _colors = require('colors');
 const { Conflux, format } = require('js-conflux-sdk');
 const fs = require('fs');
-const jayson = require('jayson/promise');
-const cors = require('cors');
-const morgan = require('morgan');
-const express = require('express');
-const jsonParser = require('body-parser').json;
 const namehash = require('eth-ens-namehash').hash;
 const Web3EthAbi = require('web3-eth-abi');
 
@@ -250,28 +245,6 @@ async function track(db, name, address, from, untilEpoch = Number.MAX_SAFE_INTEG
     }
 }
 
-function startServer(db, port) {
-    const app = express();
-
-    const server = jayson.server({
-        cfx_getLogs: async function(args) {
-            return await db.getLogs(args[0]);
-        }
-    });
-
-    morgan.token('body', (req, res) => JSON.stringify(req.body));
-    app.use(morgan(':method :url :status :response-time ms - :res[content-length] :body - :req[content-length]'));
-
-    // enable CORS including pre-flight requests
-    app.options('*', cors());
-    app.use(cors());
-
-    app.use(jsonParser());
-    app.use(server.middleware());
-
-    app.listen(port);
-}
-
 async function main() {
     // init db
     const db = new Database();
@@ -311,10 +284,6 @@ async function main() {
     for (const entry of entries) {
         track(db, entry.name, entry.address, entry.latest + 1);
     }
-
-    // start RPC server
-    startServer(db, 3000);
 }
 
 main();
-

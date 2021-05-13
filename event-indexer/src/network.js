@@ -86,6 +86,8 @@ class Network {
 
             // process groups in batches if there are too many
             for (const subgroup of _.chunk(group, this.batchSize)) {
+                // TODO: try using setImmediate to avoid blocking the event loop
+
                 // collect addresses
                 const addresses = subgroup.map(i => i.args.address);
 
