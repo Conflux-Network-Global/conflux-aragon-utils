@@ -86,45 +86,47 @@ class Network {
 
             // process groups in batches if there are too many
             for (const subgroup of _.chunk(group, this.batchSize)) {
-                // collect addresses
-                const addresses = subgroup.map(i => i.args.address);
+                setImmediate(() => {
+                    // collect addresses
+                    const addresses = subgroup.map(i => i.args.address);
 
-                // address => resolve
-                const resolve = {};
+                    // address => resolve
+                    const resolve = {};
 
-                for (const item of subgroup) {
-                    resolve[item.args.address.toLowerCase()] = item.resolve;
-                }
+                    for (const item of subgroup) {
+                        resolve[item.args.address.toLowerCase()] = item.resolve;
+                    }
 
-                // perform request
-                console.log(`sending request: epochs ${fromEpoch}..${toEpoch} with topics '${topics}' (${addresses.length} addresses)`);
+                    // perform request
+                    console.log(`sending request: epochs ${fromEpoch}..${toEpoch} with topics '${topics}' (${addresses.length} addresses)`);
 
-                const p = this.conflux.getLogs({
-                    address: addresses,
-                    topics,
-                    fromEpoch,
-                    toEpoch,
+                    const p = this.conflux.getLogs({
+                        address: addresses,
+                        topics,
+                        fromEpoch,
+                        toEpoch,
+                    });
+
+                    this.numRequests += 1;
+
+                    p.then((response) => {
+                        // group response items by address
+                        const responseGroups = _.groupBy(response, (resp) => resp.address);
+
+                        // yield each group to the corresponding client
+                        for (const group of Object.values(responseGroups)) {
+                            const address = format.hexAddress(group[0].address).toLowerCase();
+                            resolve[address](group);
+                            delete resolve[address];
+                        }
+
+                        // resolve all the remaining (no logs)
+                        for (const address of Object.keys(resolve)) {
+                            resolve[address]([]);
+                            delete resolve[address];
+                        }
+                    })
                 });
-
-                this.numRequests += 1;
-
-                p.then((response) => {
-                    // group response items by address
-                    const responseGroups = _.groupBy(response, (resp) => resp.address);
-
-                    // yield each group to the corresponding client
-                    for (const group of Object.values(responseGroups)) {
-                        const address = format.hexAddress(group[0].address).toLowerCase();
-                        resolve[address](group);
-                        delete resolve[address];
-                    }
-
-                    // resolve all the remaining (no logs)
-                    for (const address of Object.keys(resolve)) {
-                        resolve[address]([]);
-                        delete resolve[address];
-                    }
-                })
             }
         }
     }
