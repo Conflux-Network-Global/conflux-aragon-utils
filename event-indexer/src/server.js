@@ -10,22 +10,37 @@ const Database = require('./database');
 function startServer(db, port) {
     const app = express();
 
+    // assign unique ID to request
+    let id = 1;
+
+    app.use((req, _res, next) => {
+        req.id = id;
+        id += 1;
+        next();
+    });
+
+    // parse body
+    app.use(jsonParser());
+
+    // set up logging
+    morgan.token('id', req => req.id);
+    morgan.token('body', req => JSON.stringify(req.body));
+
+    app.use(morgan('--> :id [:date] ":method :url" --  :body', { immediate: true }))
+    app.use(morgan('<-- :id [:date] :status :response-time ms :res[content-length] bytes', { immediate: false }))
+
+    // enable CORS including pre-flight requests
+    app.options('*', cors());
+    app.use(cors());
+
+    // set up JSON-RPC server
     const server = jayson.server({
         cfx_getLogs: async function(args) {
             return await db.getLogs(args[0]);
         }
     });
 
-    morgan.token('body', (req, res) => JSON.stringify(req.body));
-    app.use(morgan(':method :url :status :response-time ms - :res[content-length] :body - :req[content-length]'));
-
-    // enable CORS including pre-flight requests
-    app.options('*', cors());
-    app.use(cors());
-
-    app.use(jsonParser());
     app.use(server.middleware());
-
     app.listen(port);
 }
 
@@ -50,7 +65,9 @@ async function main() {
     process.on('uncaughtException', async (r) => { console.error(r); db.close(); process.exit(); });
 
     // start RPC server
-    startServer(db, 3000);
+    const PORT = 3000;
+    startServer(db, PORT);
+    console.log(`Server listening on port ${PORT}`);
 }
 
 main();
