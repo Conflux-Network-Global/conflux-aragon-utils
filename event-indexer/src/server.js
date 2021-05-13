@@ -53,7 +53,7 @@ async function main() {
         'port': 3306,
         'user': 'user',
         'password': 'password',
-        'database': 'db2',
+        'database': 'db',
     });
 
     // make sure to close db on exit
