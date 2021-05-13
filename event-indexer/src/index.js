@@ -5,7 +5,7 @@ const fs = require('fs');
 const jayson = require('jayson/promise');
 const cors = require('cors');
 const morgan = require('morgan');
-const connect = require('connect');
+const express = require('express');
 const jsonParser = require('body-parser').json;
 const namehash = require('eth-ens-namehash').hash;
 const Web3EthAbi = require('web3-eth-abi');
@@ -251,7 +251,7 @@ async function track(db, name, address, from, untilEpoch = Number.MAX_SAFE_INTEG
 }
 
 function startServer(db, port) {
-    const app = connect();
+    const app = express();
 
     const server = jayson.server({
         cfx_getLogs: async function(args) {
@@ -261,7 +261,11 @@ function startServer(db, port) {
 
     morgan.token('body', (req, res) => JSON.stringify(req.body));
     app.use(morgan(':method :url :status :response-time ms - :res[content-length] :body - :req[content-length]'));
+
+    // enable CORS including pre-flight requests
+    app.options('*', cors());
     app.use(cors());
+
     app.use(jsonParser());
     app.use(server.middleware());
 
