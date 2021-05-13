@@ -24,3 +24,9 @@ Then, run the indexer:
 ```
 $ node src/index.js
 ```
+
+Finally, run the server to serve `cfx_getLogs` queries.
+
+```
+$ node src/server.js
+```
